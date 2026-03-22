@@ -2,3 +2,5 @@
 ergasia_venv
 #Test file for personal use
 test*.py
+#pycache folder used by python
+__pycache__

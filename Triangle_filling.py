@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+from tqdm import tqdm
 
 def vector_interp(p1, p2, V1, V2, coord, dim):
     """
@@ -33,11 +35,11 @@ def scanline_search(vertices, M, N):
     xmax = []
     for k in range(K):
         x1, y1 = vertices[k]
-        x2, y2 = vertices[(k + 1) % K] #This matches v1 to v2, ..., v3 to v1 by circling around using mod
+        x2, y2 = vertices[(k + 1) % K] #This matches v1 to v2, ..., v3 to v1 by circling amath.ceil using mod
         #We find xkmin etc
         ymin, ymax = int(min(y1, y2)), int(max(y1, y2))
-        xmin.append(int(min(x1, x2)))
-        xmax.append(int(max(x1, x2)))
+        xmin.append(int(math.floor(min(x1, x2))))
+        xmax.append(int(math.ceil(max(x1, x2))))
 
         #Since we want to exclude horizontal lines
         if ymin == ymax:
@@ -60,12 +62,13 @@ def scanline_search(vertices, M, N):
             'inv_m' : inv_m, #Its slope
             'x_curr' : float(x_of_ymin) #The current x point(since we start from bottom to top, it's the x at ymin)
         })
-
-    global_ymin = min(e['ymin'] for e in edges)
-    global_ymax = max(e['ymax'] for e in edges)
-    global_xmin = min(xmin)
-    global_xmax = max(xmax)
-
+    if len(edges) > 0:
+        global_ymin = min(e['ymin'] for e in edges)
+        global_ymax = max(e['ymax'] for e in edges)
+        global_xmin = min(xmin)
+        global_xmax = max(xmax)
+    else:
+        return [-1, -1]
     active_edges = [e for e in edges if e['ymin'] == global_ymin]
 
     for y in range(global_ymin, global_ymax + 1):
@@ -74,18 +77,23 @@ def scanline_search(vertices, M, N):
         active_edges.sort(key=lambda e: e['x_curr'])
 
         #The active intersections are just the x of the active edge at the current y
-        active_intersections = [round(e['x_curr']) for e in active_edges]
+        active_intersections = [math.ceil(e['x_curr']) for e in active_edges]
 
         cross_count = 0
-        for x in range(global_xmin, global_xmax + 1):
+
+        if len(active_edges) >= 2:
+            left_x = int(math.floor(active_edges[0]['x_curr']))
+            right_x = int(math.ceil(active_edges[-1]['x_curr']))
+
+        for x in range(left_x, right_x + 1):
         #for x in range(0, N + 1):
 
             #Count how many intersections we have for this particular x and add it to the count
-            cross_count +=  active_intersections.count(x)
+            #cross_count +=  active_intersections.count(x)
             #cross parity check
-            if cross_count % 2 == 1:
-                if 0 <= x < N and 0 <= y < M:
-                    yield (x, y)
+            #if cross_count % 2 == 1:
+            if 0 <= x < N and 0 <= y < M:
+                yield (x, y)
 
         #Update recursively the active edge list
 
@@ -115,7 +123,9 @@ def f_shading(img, vertices, vcolors):
     flat_color = np.mean(vcolors, axis=0)
 
     for x, y in scanline_search(vertices, M, N):
-        updated_img[y, x] = flat_color
+        if x >= 0 and y >= 0:
+            updated_img[y, x] = flat_color
+        #If the pixels coming from scanline search are valid, update them, else do nothing
 
     return updated_img
 
@@ -226,8 +236,8 @@ def t_shading(img, vertices, uv, textImg):
             uvB = vector_interp(e_right['p1'], e_right['p2'], e_right['uv1'], e_right['uv2'], y, 2)
             
             # Define exact integer start and end for the X loop
-            start_x = max(0, int(round(xA)))
-            end_x = min(N - 1, int(round(xB)))
+            start_x = max(0, int(math.ceil(xA)))
+            end_x = min(N - 1, int(math.ceil(xB)))
             
             # Interpolate UV across the scanline from A to B
             for x in range(start_x, end_x + 1):
@@ -238,8 +248,8 @@ def t_shading(img, vertices, uv, textImg):
                 
                 # Nearest Neighbor calculation as per the assignment text
                 # We use K-1 and L-1 to prevent Index Out of Bounds errors
-                tex_u = int(np.clip(round(u * (K - 1)), 0, K - 1))
-                tex_v = int(np.clip(round(v * (L - 1)), 0, L - 1))
+                tex_u = int(np.clip(math.ceil(u * (K - 1)), 0, K - 1))
+                tex_v = int(np.clip(math.ceil(v * (L - 1)), 0, L - 1))
                 
                 if 0 <= y < M:
                     updated_img[y, x] = textImg[tex_u, tex_v]
@@ -284,7 +294,7 @@ def render_img(faces, vertices, vcolors, uvs, depth, shading, textImg):
     triangles.sort(key=lambda t: t['depth'], reverse=True)
 
     # Render triangles in the sorted order
-    for tri in triangles:
+    for tri in tqdm(triangles, desc=f"Rendering ({shading} shading)"):
         idx0, idx1, idx2 = tri['face_indices']
 
         #Extract the specific data for the vertices
@@ -302,73 +312,3 @@ def render_img(faces, vertices, vcolors, uvs, depth, shading, textImg):
             img = t_shading(img, tri_vertices, tri_uvs, textImg)
 
     return img
-
-# 1. Vertices (8 corners of a cube projected onto a 512x512 2D canvas)
-test_vertices = np.array([
-    [150, 150],  # 0: Front Top-Left
-    [350, 150],  # 1: Front Top-Right
-    [350, 350],  # 2: Front Bottom-Right
-    [150, 350],  # 3: Front Bottom-Left
-    [250, 50],   # 4: Back Top-Left
-    [450, 50],   # 5: Back Top-Right
-    [450, 250],  # 6: Back Bottom-Right
-    [250, 250]   # 7: Back Bottom-Left
-])
-
-# 2. Depth values for each vertex (Higher = Further away)
-test_depth = np.array([
-    10.0, 10.0, 10.0, 10.0,  # Front vertices are close
-    20.0, 20.0, 20.0, 20.0   # Back vertices are far
-])
-
-# 3. Faces (12 triangles making up the 6 sides of the cube)
-test_faces = np.array([
-    [0, 1, 2], [0, 2, 3],  # Front face
-    [5, 4, 7], [5, 7, 6],  # Back face
-    [4, 5, 1], [4, 1, 0],  # Top face
-    [3, 2, 6], [3, 6, 7],  # Bottom face
-    [4, 0, 3], [4, 3, 7],  # Left face
-    [1, 5, 6], [1, 6, 2]   # Right face
-])
-
-# 4. Colors for the 8 vertices (to test flat/Gouraud shading)
-test_vcolors = np.array([
-    [255, 0, 0],   # 0: Red
-    [0, 255, 0],   # 1: Green
-    [0, 0, 255],   # 2: Blue
-    [255, 255, 0], # 3: Yellow
-    [0, 255, 255], # 4: Cyan
-    [255, 0, 255], # 5: Magenta
-    [255, 128, 0], # 6: Orange
-    [128, 0, 255]  # 7: Purple
-])
-
-# 5. UV Coordinates (Simplified mapping for texture testing)
-test_uvs = np.array([
-    [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0],
-    [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]
-])
-
-# 6. Dummy Texture (A simple 8x8 blue/yellow checkerboard)
-test_texture = np.zeros((8, 8, 3), dtype=np.uint8)
-test_texture[:, :] = [0, 0, 255]
-test_texture[::2, ::2] = [255, 255, 0]
-test_texture[1::2, 1::2] = [255, 255, 0]
-
-# --- Execute and Visualize ---
-# Test Flat Shading first
-final_image = render_img(
-    faces=test_faces, 
-    vertices=test_vertices, 
-    vcolors=test_vcolors, 
-    uvs=test_uvs, 
-    depth=test_depth, 
-    shading='f', 
-    textImg=test_texture
-)
-
-plt.figure(figsize=(8, 8))
-plt.imshow(final_image)
-plt.title("Painter's Algorithm - Cube (Flat Shading)")
-plt.gca().invert_yaxis() # Ensure Y-axis matches image coordinates
-plt.show()

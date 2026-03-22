@@ -4,3 +4,6 @@ ergasia_venv
 test*.py
 #pycache folder used by python
 __pycache__
+#We do not want .png in the repo and the input file .npy
+*.png
+hw1.npy
